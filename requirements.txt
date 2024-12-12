@@ -1,0 +1,5 @@
+Flask
+aiohttp
+APScheduler
+requests
+git+https://github.com/botsarefuture/blacklistfetcher.git
