@@ -37,6 +37,9 @@ global INTERNET_CONNECTION
 INTERNET_CONNECTION = False
 
 def wait_for_internet():
+    """
+    Waits for an internet connection to be established.
+    """
     global INTERNET_CONNECTION
     while not INTERNET_CONNECTION:
         logger.info("Checking for internet connection...")
@@ -63,6 +66,9 @@ def wait_for_internet():
 wait_for_internet()
 
 def check_internet_connection():
+    """
+    Checks if there is an internet connection and logs the status.
+    """
     if INTERNET_CONNECTION:
         logger.info("Internet connection detected or user chose to continue without it.")
 
@@ -327,7 +333,7 @@ class FlaskAutoSec:
         Adds an IP address to the whitelist.
     _handle_white_mode()
         Handles the white mode.
-    _setup_routes()
+    _setup_routes(app)
         Sets up Flask hooks for request reporting, blacklist checking, and rate-limiting.
     get_ip()
         Retrieves the client's IP address from the request headers.

@@ -20,5 +20,8 @@ if __name__ == '__main__':
     app.run()
 ```
 
+## Documentation
+Detailed documentation can be found in the `docs/` folder.
+
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
