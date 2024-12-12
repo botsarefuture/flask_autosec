@@ -363,7 +363,7 @@ class FlaskAutoSec:
         self.blacklist_fetcher = BlacklistFetcher()
         
         self.rate_limits = {
-            'pink': 5,
+            'pink': 500,
             'blue': 250,
             'red': 200,
             'violet': 150,
