@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='flask_autosec',
-    version='0.2.0',
+    version='0.3.0',
     author='Verso Vuorenmaa',
     description='FlaskAutoSec library for integrating security features into a Flask application.',
     packages=find_packages(),
