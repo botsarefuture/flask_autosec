@@ -11,7 +11,7 @@ setup(
         'aiohttp>=3.7.4',
         'APScheduler>=3.6.3',
         'requests>=2.25.1',
-        'git+https://github.com/botsarefuture/blacklistfetcher.git'
+        'blacklistfetcher @ git+https://github.com/botsarefuture/blacklistfetcher.git'
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
