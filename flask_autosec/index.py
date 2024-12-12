@@ -348,7 +348,7 @@ class FlaskAutoSec:
     _start_scheduler()
         Starts a scheduler to periodically update mode and blacklist.
     """
-    def __init__(self, _enforce_rate_limits=False):
+    def __init__(self, _enforce_rate_limits=True):
         """
         Initializes the FlaskAutoSec library.
 
@@ -434,10 +434,7 @@ class FlaskAutoSec:
             kill_req = False
             
             ip = self.get_ip()
-            _fetch = request.headers.get("Sec-Fetch-Mode") == "cors"
-
-            logger.warning(request.user_agent)
-            
+            #_fetch = request.headers.get("Sec-Fetch-Mode") == "cors"           
             
             
             if self.mode == 6:
@@ -446,8 +443,8 @@ class FlaskAutoSec:
             
             # Blacklist check
             if ip in self.blacklist:
-                if _fetch: #JSON request
-                    return jsonify({"error": "Forbidden: IP blacklisted"}), 403
+                #if _fetch: #JSON request
+                #    return jsonify({"error": "Forbidden: IP blacklisted"}), 403
                 
                 response = make_response("Forbidden: IP blacklisted", 403)
                 response.headers['X-Error-Code'] = '403.6'
@@ -475,8 +472,8 @@ class FlaskAutoSec:
                 response.data = "<html><head><title>429 Too Many Requests</title></head><body><h1>Too Many Requests</h1><p>I'm sorry, you have exceeded the rate limit.</p></body></html>"
                 response.headers['Refresh'] = str(int(self.request_counts[ip]['reset_time'] - current_time))
                 
-                if _fetch:
-                    return jsonify({"error": "Rate limit exceeded", "e_code": "RATELIMIT_EXCEEDED"}), 429
+                #if _fetch:
+                #    return jsonify({"error": "Rate limit exceeded", "e_code": "RATELIMIT_EXCEEDED"}), 429
                 
                 # Handle rate limit violation gracefully
                 return response
