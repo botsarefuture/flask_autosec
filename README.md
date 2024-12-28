@@ -20,6 +20,19 @@ if __name__ == '__main__':
     app.run()
 ```
 
+### Running with Gunicorn
+
+When deploying your Flask application with Gunicorn, FlaskAutoSec ensures that only one scheduler instance runs across multiple worker processes. This is achieved using a file-based lock mechanism.
+
+**Example Command:**
+```bash
+gunicorn -w 4 -b 0.0.0.0:8000 your_application:app
+```
+
+**Notes:**
+- The scheduler lock file is located at `/tmp/flask_autosec_scheduler.lock`. Ensure that the application has the necessary permissions to create and modify this file.
+- FlaskAutoSec automatically detects if it's running under Gunicorn and handles scheduler initialization accordingly to prevent multiple instances.
+
 ## Documentation
 Detailed documentation can be found in the `docs/` folder.
 
