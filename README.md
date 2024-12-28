@@ -13,7 +13,7 @@ from flask import Flask
 from flask_autosec import FlaskAutoSec
 
 app = Flask(__name__)
-security = FlaskAutoSec(_enforce_rate_limits=True)
+security = FlaskAutoSec()
 security.init_app(app)
 
 if __name__ == '__main__':

@@ -28,6 +28,8 @@ import time
 from blacklistfetcher import BlacklistFetcher
 import requests
 import re
+import os
+import fcntl
 
 logger = logging.getLogger("FlaskAutoSec")
 logger.setLevel(logging.WARNING)
@@ -37,32 +39,32 @@ global INTERNET_CONNECTION
 INTERNET_CONNECTION = False
 
 
-def wait_for_internet():
+def wait_for_internet(max_retries=5, delay=5):
     """
-    Waits for an internet connection to be established.
+    Waits for an internet connection to be established with a maximum number of retries.
+    
+    Parameters
+    ----------
+    max_retries : int
+        Maximum number of connection attempts.
+    delay : int
+        Delay in seconds between attempts.
     """
     global INTERNET_CONNECTION
-    while not INTERNET_CONNECTION:
+    attempts = 0
+    while not INTERNET_CONNECTION and attempts < max_retries:
         logger.info("Checking for internet connection...")
-
         try:
-            try:
-                requests.get("https://core.security.luova.club", timeout=5)
-                INTERNET_CONNECTION = True
-
-            except requests.ConnectionError:
-                logger.error("No internet connection detected.")
-                logger.warning(
-                    "Trying again in 5 seconds... (Press CTRL+C to continue without internet connection)"
-                )
-                time.sleep(5)
-                continue
-
-        except KeyboardInterrupt:
-            # let the user continue without internet connection
-            logger.warning("Continuing without internet connection.")
+            requests.get("https://core.security.luova.club", timeout=5)
             INTERNET_CONNECTION = True
-            break
+        except requests.ConnectionError:
+            attempts += 1
+            logger.error("No internet connection detected.")
+            logger.warning(f"Trying again in {delay} seconds... ({attempts}/{max_retries})")
+            time.sleep(delay)
+    if not INTERNET_CONNECTION:
+        logger.warning("Unable to connect to core.security.luova.club. Continuing with default settings.")
+        INTERNET_CONNECTION = True  # Allow the app to continue running
 
 
 wait_for_internet()
@@ -184,19 +186,20 @@ class Mode:
     def fetch_mode(self):
         """
         Fetches the mode from the SECORE API.
-
+    
         Returns
         -------
         int
-            The fetched mode.
+            The fetched mode or default mode if the request fails.
         """
         try:
             url = "https://core.security.luova.club/visualizer/api/alertlevel"
-            result = requests.get(url)
+            result = requests.get(url, timeout=5)
             resp = int(result.json().get("alert_level", 0))
             return resp
-        except:
-            return 5  # If the request fails, return black mode.
+        except requests.RequestException as e:
+            logger.error(f"Error fetching mode from SECORE API: {e}")
+            return 0  # Return default mode (e.g., pink) if the request fails
 
     def __str__(self):
         """
@@ -331,6 +334,10 @@ class FlaskAutoSec:
         Dictionary to track request counts and reset times.
     mode : int
         The current mode.
+    scheduler_lock_file : str
+        Path to the lock file for scheduler synchronization.
+    scheduler_lock : file object
+        File object for the scheduler lock.
 
     Methods
     -------
@@ -356,16 +363,16 @@ class FlaskAutoSec:
         Starts a scheduler to periodically update mode and blacklist.
     """
 
-    def __init__(self, _enforce_rate_limits=True):
+    def __init__(self, enforce_rate_limits=True):
         """
         Initializes the FlaskAutoSec library.
 
         Parameters
         ----------
-        _enforce_rate_limits : bool, optional
-            Flag to enforce rate limits (default is False).
+        enforce_rate_limits : bool, optional
+            Flag to enforce rate limits (default is True).
         """
-        self._enforce_rate_limits = _enforce_rate_limits
+        self._enforce_rate_limits = enforce_rate_limits
         self.api_base_url = "https://core.security.luova.club/"
         self.reports_url = f"{self.api_base_url}/HTTP/reports"
         self.blacklist_fetcher = BlacklistFetcher()
@@ -385,7 +392,10 @@ class FlaskAutoSec:
         self.request_counts = defaultdict(
             lambda: {"count": 0, "reset_time": time.time() + 60}
         )  # 60 seconds
-        self.mode: int = 0
+        
+        self.mode = 0
+        self.scheduler_lock_file = "/tmp/flask_autosec_scheduler.lock"
+        self.scheduler_lock = None
 
     def init_app(self, app):
         """
@@ -553,7 +563,7 @@ class FlaskAutoSec:
         Validates the format of an IP address.
 
         Parameters
-        ----------Fuckkkk
+        ----------
         ip : str
             The IP address to validate.
 
@@ -648,10 +658,45 @@ class FlaskAutoSec:
     def _start_scheduler(self):
         """
         Starts a scheduler to periodically update mode and blacklist.
+        Ensures only one scheduler instance runs across multiple Gunicorn workers.
         """
-        scheduler = BackgroundScheduler()
-        scheduler.add_job(self._fetch_mode_and_update_limits, "interval", minutes=1)
-        scheduler.start()
+        if self._is_under_gunicorn():
+            self.scheduler_lock = open(self.scheduler_lock_file, 'w')
+            try:
+                # Try to acquire an exclusive lock without blocking
+                fcntl.flock(self.scheduler_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                # If lock is acquired, start the scheduler
+                scheduler = BackgroundScheduler()
+                scheduler.add_job(self._fetch_mode_and_update_limits, "interval", minutes=1)
+                scheduler.start()
+                logger.info("Scheduler started.")
+            except IOError:
+                # Lock already acquired by another worker
+                logger.info("Scheduler already running in another worker. Skipping scheduler start.")
+        else:
+            # If not running under Gunicorn, start scheduler normally
+            scheduler = BackgroundScheduler()
+            scheduler.add_job(self._fetch_mode_and_update_limits, "interval", minutes=1)
+            scheduler.start()
+            logger.info("Scheduler started.")
 
-        # Initial fetch
-        self._fetch_mode_and_update_limits()
+    def _is_under_gunicorn(self):
+        """
+        Checks if the application is running under Gunicorn.
+
+        Returns
+        -------
+        bool
+            True if running under Gunicorn, False otherwise.
+        """
+        return 'gunicorn' in os.environ.get('SERVER_SOFTWARE', '').lower()
+
+    def __del__(self):
+        """
+        Ensures that the scheduler lock file is released when the instance is destroyed.
+        """
+        if self.scheduler_lock:
+            fcntl.flock(self.scheduler_lock, fcntl.LOCK_UN)
+            self.scheduler_lock.close()
+            os.remove(self.scheduler_lock_file)
+            logger.info("Scheduler lock released.")
