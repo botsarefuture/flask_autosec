@@ -13,6 +13,7 @@ Version: 0.1.0
 THIS CODE AND IT'S USING IS UNDER NDA AGREEMENT WITH LUOVACLUB RY.
 """
 
+import ipaddress
 from flask import jsonify
 from flask import redirect
 from flask import request
@@ -376,7 +377,10 @@ class FlaskAutoSec:
         self.api_base_url = "https://core.security.luova.club/"
         self.reports_url = f"{self.api_base_url}/HTTP/reports"
         self.blacklist_fetcher = BlacklistFetcher()
-
+        self.blacklist_ips = set()
+        self.blacklist_cidrs = set()
+        
+        
         self.rate_limits = {
             "pink": 500,
             "blue": 250,
@@ -387,7 +391,7 @@ class FlaskAutoSec:
         }
 
         self.current_rate_limit = self.rate_limits["pink"]
-        self.blacklist = set()
+
         self.whitelist = ["127.0.0.1"]
         self.request_counts = defaultdict(
             lambda: {"count": 0, "reset_time": time.time() + 60}
@@ -463,14 +467,22 @@ class FlaskAutoSec:
                 return self._handle_white_mode()
 
             # Blacklist check
-            if ip in self.blacklist:
-                # if _fetch: #JSON request
-                #    return jsonify({"error": "Forbidden: IP blacklisted"}), 403
+            ip_obj = ipaddress.ip_address(ip)
 
+                    # Check if IP is in blacklist or any CIDR contains it
+            ip_obj = ipaddress.ip_address(ip)
+            if ip in self.blacklist_ips or any(ip_obj in cidr for cidr in self.blacklist_cidrs):
+                # Prepare the forbidden response
                 response = make_response("Forbidden: IP blacklisted", 403)
                 response.headers["X-Error-Code"] = "403.6"
-                kill_req = True
+
+                # Optional: return JSON for API requests
+                if request.is_json:
+                    return jsonify({"error": "Forbidden: IP blacklisted"}), 403
+
+                # Abort with the response
                 abort(response)
+
 
             # Rate limiting
             current_time = time.time()
@@ -627,30 +639,26 @@ class FlaskAutoSec:
                 )
             except aiohttp.ClientError as e:
                 logger.error(f"Error reporting rate limit violation to SECORE API: {e}")
-
     def _fetch_mode_and_update_limits(self):
         """
-        Fetches the current mode from SECORE API and updates rate limits accordingly.
-        Also fetches the blacklist from SECORE API and updates the local blacklist.
+        Fetches the current mode and blacklist, updates rate limits.
+        Supports CIDR-aware blacklist.
         """
         try:
             # Fetch mode
             mode = Mode()
             mode._update()
-
             self.mode = int(mode)
-
             self.current_rate_limit = self.rate_limits.get(
                 str(mode._upper()), self.rate_limits["pink"]
             )
-
             if self.mode == 5:
-                logger.warning("Black mode detected. Enforcing rate limits.")
                 self._enforce_rate_limits = True
 
-            # Fetch blacklist
+            # Fetch blacklist (CIDR-aware)
             blacklist_response = self.blacklist_fetcher.get_blacklist_ips()
-            self.blacklist = set(blacklist_response)
+            self.blacklist_ips = set(blacklist_response.get("ips", []))
+            self.blacklist_cidrs = set(blacklist_response.get("cidrs", []))
 
         except requests.RequestException as e:
             logger.error(f"Error fetching data from SECORE API: {e}")
